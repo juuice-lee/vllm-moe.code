@@ -99,8 +99,8 @@ class Llama4MoE(nn.Module):
         router_logits, _ = self.router(hidden_states)
         shared_out = self.shared_expert(hidden_states)
         routed_out = self.experts(
-            hidden_states=hidden_states,
-            router_logits=router_logits,
+            hidden_states,
+            router_logits,
         )
         experts_out = routed_out + shared_out
 
@@ -319,8 +319,8 @@ class Llama4DecoderLayer(nn.Module):
         else:
             hidden_states, residual = self.input_layernorm(
                 hidden_states, residual)
-        hidden_states = self.self_attn(positions=positions,
-                                       hidden_states=hidden_states)
+        hidden_states = self.self_attn(positions,
+                                       hidden_states)
 
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(
