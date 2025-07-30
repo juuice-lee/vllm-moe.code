@@ -33,7 +33,7 @@ from vllm.v1.outputs import (EMPTY_MODEL_RUNNER_OUTPUT, DraftTokenIds,
 from vllm.v1.utils import report_usage_stats
 from vllm.v1.worker.gpu_model_runner import GPUModelRunner
 from vllm.v1.worker.worker_base import WorkerBase
-
+from vllm.utils.monitor.gpu_worker_store import RPCCallFunction
 logger = init_logger(__name__)
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from vllm.v1.core.sched.output import SchedulerOutput
 
 
-class Worker(WorkerBase):
+class Worker(RPCCallFunction, WorkerBase):
 
     def __init__(
         self,
