@@ -53,6 +53,10 @@ class LatencyMeasure:
     #     self, prompts: list[VLMRequest], sampling_params: SamplingParams
     # ) -> dict[str, Any]:
     #     self.llm.chat(format_vlm_messages(prompts), sampling_params)
+    
+    def change_json_prefix(self, json_prefix:str):
+        """Edit the json_prefix"""
+        self.json_prefix=json_prefix
 
     def get_intermediate_results(self) -> dict[str, Any]:
         """Get intermediate results without clearing the stored data."""
@@ -65,10 +69,10 @@ class LatencyMeasure:
         else:
             return {}
 
-    def aggregate_results(self, print_results: bool = True) -> dict[str, Any]:
+    def aggregate_results(self, print_results: bool = True, pop: bool = False) -> dict[str, Any]:
         # Collect results
         print("Aggregating results...")
-        result_dict = self.monitor.aggregate_async_latencies(pop=True)
+        result_dict = self.monitor.aggregate_async_latencies(pop=pop)
 
         # Process results
         if result_dict and len(result_dict) > 0:
@@ -191,6 +195,10 @@ class MoEMeasure:
         else:
             self.handles = self.monitor.register_latency_hooks(module_names)
         
+    def change_json_prefix(self, json_prefix:str):
+        """Edit the json_prefix"""
+        self.json_prefix=json_prefix
+        
     def get_intermediate_results(self) -> dict[str, Any]:
         """Get intermediate results without clearing the stored data."""
         # Collect results without popping
@@ -204,13 +212,13 @@ class MoEMeasure:
         else:
             return {}
 
-    def aggregate_results(self, print_results: bool = True) -> dict[str, Any]:
+    def aggregate_results(self, print_results: bool = True, pop: bool = False) -> dict[str, Any]:
         # Collect results
         print("Aggregating results...")
         if self.hook_expert_score:
-            result_list = self.monitor.aggregate_async_moe_results()
+            result_list = self.monitor.aggregate_async_moe_results(pop=pop)
         else:
-            result_list = self.monitor.aggregate_async_latencies()
+            result_list = self.monitor.aggregate_async_latencies(pop=pop)
             
         # Process results
         if result_list and len(result_list) > 0:

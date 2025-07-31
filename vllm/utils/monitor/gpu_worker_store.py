@@ -121,7 +121,7 @@ class RPCCallFunction:
             post_h = module.register_forward_hook(_post_hook)
             handles_dict[mod_name] = (pre_h, post_h)
 
-            logger.debug(f"Registered latency hooks on {mod_name}")
+            # logger.debug(f"Registered latency hooks on {mod_name}")
 
         self._worker_store._is_capturing_latency = True
         # logger.infowc(Colors.BLUE, "Capturing latency...")
@@ -200,7 +200,7 @@ class RPCCallFunction:
             module.register_forward_pre_hook(_pre_hook)
             module.register_forward_hook(_post_hook)
 
-            logger.debug(f"Registered latency hooks on {mod_name}")
+            # logger.debug(f"Registered latency hooks on {mod_name}")
 
         self._worker_store._is_capturing_latency = True
 
