@@ -28,6 +28,10 @@ class RPCCallFunction:
         """Check if a method exists in the worker."""
         return hasattr(self, method)
 
+    def get_worker_store_rank(self) -> tuple[Optional[int], Optional[int]]:
+        """Check the rank and local rank of the worker."""
+        return self._worker_store.device_id, self._worker_store.worker_id
+
     # Call like llm.llm_engine.collective_rpc("get_module_names")
     def get_module_names(self) -> list[str]:
         """
@@ -116,12 +120,25 @@ class RPCCallFunction:
                 store.record_hook_data(_name, "_evt_pairs", end_evt)
 
             # ── hook 등록 ─────────────────────────────────────────────────
-            print(f"{mod_name} hooking")
+            # print(f"{mod_name} hooking")
             pre_h = module.register_forward_pre_hook(_pre_hook)
             post_h = module.register_forward_hook(_post_hook)
             handles_dict[mod_name] = (pre_h, post_h)
 
             # logger.debug(f"Registered latency hooks on {mod_name}")
+        def _model_pre_hook(_m, _inp, _name="model"):
+            start_evt = torch.cuda.Event(enable_timing=True)
+            start_evt.record()
+            store.record_hook_data(_name, "_evt_pairs", start_evt)
+
+        def _model_post_hook(_m, _inp, _out, _name="model"):
+            end_evt = torch.cuda.Event(enable_timing=True)
+            end_evt.record()
+            store.record_hook_data(_name, "_evt_pairs", end_evt)
+        # model도 pre-hook, post-hook 등록해서 전체 chat time 측정
+        # print(f"model hooking")
+        model.register_forward_pre_hook(_model_pre_hook)
+        model.register_forward_hook(_model_post_hook)
 
         self._worker_store._is_capturing_latency = True
         # logger.infowc(Colors.BLUE, "Capturing latency...")
@@ -196,14 +213,105 @@ class RPCCallFunction:
                     else:
                         store.record_hook_data(_name, "_expert_score", _out)
             # ── hook 등록 ─────────────────────────────────────────────────
-            print(f"{mod_name} hooking")
+            # print(f"{mod_name} hooking")
             module.register_forward_pre_hook(_pre_hook)
             module.register_forward_hook(_post_hook)
 
-            # logger.debug(f"Registered latency hooks on {mod_name}")
+            logger.debug(f"Registered latency hooks on {mod_name}")
+        def _model_pre_hook(_m, _inp, _name="model"):
+            start_evt = torch.cuda.Event(enable_timing=True)
+            start_evt.record()
+            store.record_hook_data(_name, "_evt_pairs", start_evt)
+
+        def _model_post_hook(_m, _inp, _out, _name="model"):
+            end_evt = torch.cuda.Event(enable_timing=True)
+            end_evt.record()
+            store.record_hook_data(_name, "_evt_pairs", end_evt)
+        # model도 pre-hook, post-hook 등록해서 전체 chat time 측정
+        model.register_forward_pre_hook(_model_pre_hook)
+        model.register_forward_hook(_model_post_hook)
 
         self._worker_store._is_capturing_latency = True
 
+    def register_slo_hooks(
+        self,
+        module_names: list[str],
+    ):
+        """
+        Args:
+            module_names (list[str]): list of module names to hook
+        """
+        from vllm.v1.worker.gpu_worker import logger
+        model = self.model_runner.get_model()
+        named_mods = dict(model.named_modules())
+        store = self._worker_store # singleton
+
+        for mod_name in module_names:
+            if mod_name not in named_mods:
+                raise ValueError(f"Module '{mod_name}' not found in model.")
+            module = named_mods[mod_name]
+            
+            def _pre_hook(_m, _inp, _name=mod_name):
+                # 모든 module의 시간 측정을 위해 event singleton에 추가 + input shape 기록
+                start_evt = torch.cuda.Event(enable_timing=True)
+                start_evt.record()
+                store.record_hook_data(_name, "_evt_pairs", start_evt)
+                
+                try:
+                    forward_sig = inspect.signature(_m.forward)
+                    param_names = list(forward_sig.parameters.keys())
+                    # Remove 'self' if present
+                    if param_names and param_names[0] == "self":
+                        param_names = param_names[1:]
+                except Exception:
+                    param_names = None
+                    
+                # Record input shapes with parameter names
+                if isinstance(_inp, torch.Tensor):
+                    if param_names and len(param_names) >= 1:
+                        shape_info = {param_names[0]: list(_inp.shape)}
+                    else:
+                        shape_info = {"input": list(_inp.shape)}
+                    store.record_hook_data(_name, "_input_shapes", shape_info)
+                elif isinstance(_inp, (tuple, list)):
+                    shape_info = {}
+                    for idx, inp in enumerate(_inp):
+                        if isinstance(inp, torch.Tensor):
+                            if param_names and idx < len(param_names):
+                                param_name = param_names[idx]
+                            else:
+                                param_name = f"input_{idx}"
+                            shape_info[param_name] = list(inp.shape)
+                    store.record_hook_data(_name, "_input_shapes", shape_info)
+            
+            def _post_hook(_m, _inp, _out, _name=mod_name):
+                # 모든 module의 시간 event singleton에 추가
+                # gate function일 때는 output을 singleton에 store해야 한다.
+                end_evt = torch.cuda.Event(enable_timing=True)
+                end_evt.record()
+                store.record_hook_data(_name, "_evt_pairs", end_evt)
+            # ── hook 등록 ─────────────────────────────────────────────────
+            # print(f"{mod_name} hooking")
+            module.register_forward_pre_hook(_pre_hook)
+            module.register_forward_hook(_post_hook)
+
+            logger.debug(f"Registered latency hooks on {mod_name}")
+            
+        def _model_pre_hook(_m, _inp, _name="model"):
+            start_evt = torch.cuda.Event(enable_timing=True)
+            start_evt.record()
+            store.record_hook_data(_name, "_evt_pairs", start_evt)
+
+        def _model_post_hook(_m, _inp, _out, _name="model"):
+            end_evt = torch.cuda.Event(enable_timing=True)
+            end_evt.record()
+            store.record_hook_data(_name, "_evt_pairs", end_evt)
+        # model도 pre-hook, post-hook 등록해서 전체 chat time 측정
+        model.register_forward_pre_hook(_model_pre_hook)
+        model.register_forward_hook(_model_post_hook)
+
+        self._worker_store._is_capturing_latency = True
+    
     def aggregate_async_latencies(
         self,
         module_names: list[str] | None = None,

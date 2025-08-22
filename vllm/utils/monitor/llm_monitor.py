@@ -55,7 +55,6 @@ class LLMMonitor:
 
         # WARNING(shlee): llm monitor의 function들은 2D list (rank -> result)를 반환한다.
         # 따라서 결과를 출력하기 전에 1D list로 변환해야 한다.
-
         return self.llm.llm_engine.collective_rpc(
             method, args=args, kwargs=kwargs
         )
@@ -64,6 +63,10 @@ class LLMMonitor:
         """Get the names of all modules in the model."""
         return self.collective_rpc("get_module_names")
 
+    def get_worker_store_rank(self) -> list[Tuple[Optional[int], Optional[int]]]:
+        """Get the device and worker IDs for each worker."""
+        return self.collective_rpc("get_worker_store_rank")
+    
     def get_worker_store_dict(self) -> dict[int, dict[str, Any]]:
         """Get the dictionary of worker store data."""
         return self.collective_rpc("get_worker_store_dict")
@@ -79,6 +82,12 @@ class LLMMonitor:
     ):
         """Register latency and moe expert score hooks on the specified modules"""
         return self.collective_rpc("register_moe_hooks", module_names, moe_gate_name)
+    
+    def register_slo_hooks(
+        self, module_names: list[str]
+    ):
+        """Register SLO hooks on the specified modules."""
+        return self.collective_rpc("register_slo_hooks", module_names)
 
     def aggregate_async_latencies(
         self, module_names: list[str] | None = None, pop: bool = False

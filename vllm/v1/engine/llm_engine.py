@@ -37,6 +37,43 @@ logger = init_logger(__name__)
 
 _R = TypeVar("_R", default=Any)
 
+# CASYS(DEBUG): Log scheduler outputs for debugging purposes.
+import logging, os, json, queue
+from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
+from datetime import datetime
+from pathlib import Path
+
+_SCHED_LOGGER = None
+_SCHED_QUEUE = None
+_SCHED_LISTENER = None
+
+def _init_sched_logger(log_dir: str, file_prefix: str = "schedtrace") -> logging.Logger:
+    global _SCHED_LOGGER, _SCHED_QUEUE, _SCHED_LISTENER
+    if _SCHED_LOGGER:
+        return _SCHED_LOGGER
+
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    _SCHED_QUEUE = queue.Queue(-1)
+
+    # 로테이션으로 디스크 사용량 제한
+    logfile = os.path.join(
+        log_dir,
+        f"{file_prefix}_{os.getpid()}.log"
+    )
+    fh = RotatingFileHandler(
+        logfile, maxBytes=100*1024*1024, backupCount=3, encoding="utf-8", delay=True
+    )
+    fmt = logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s")
+    fh.setFormatter(fmt)
+
+    _SCHED_LISTENER = QueueListener(_SCHED_QUEUE, fh, respect_handler_level=True)
+    _SCHED_LISTENER.start()
+
+    _SCHED_LOGGER = logging.getLogger("vllm.schedtrace")
+    _SCHED_LOGGER.setLevel(logging.INFO)         # 필요 시 DEBUG
+    _SCHED_LOGGER.addHandler(QueueHandler(_SCHED_QUEUE))
+    _SCHED_LOGGER.propagate = False
+    return _SCHED_LOGGER
 
 class LLMEngine:
     """Legacy LLMEngine for backwards compatibility."""

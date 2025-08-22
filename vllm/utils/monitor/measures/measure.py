@@ -309,10 +309,108 @@ class MoEMeasure:
         else:
             print("No results collected")
             return {}
-        
-        
 
+class SLOMeasure:
+    """
+    It supports aggregating results with DP.
+    """
+    def __init__(
+        self,
+        llm: LLM,
+        module_names: Optional[list[str]] = None,
+        save_json: bool = True,
+        json_prefix: str = "moe_results",
+        hook_expert_score: bool = False,
+        moe_gate_name: str = "gate",
+        dp_rank: Optional[int] = None,
+        dp_size: Optional[int] = None,
+    ):
+        assert (dp_rank is None and dp_size is None) or (dp_rank is not None and dp_size is not None), \
+            "If you use DP, you should set both dp_rank and dp_size. If not, set both to None."
+        
+        self.llm = llm
+        self.monitor = LLMMonitor(llm)
+        self.module_names = module_names
+        self.save_json = save_json
+        self.json_prefix = json_prefix
+        self.hook_expert_score = hook_expert_score
+        
+        self.dp_rank = dp_rank # if not None, it means that this inference using DP.
+        self.dp_size = dp_size # if not None, it means that this inference using DP.
+        # Register hooks
+        # Get module names if not specified
+        if module_names is None or len(module_names) == 0:
+            all_modules = self.monitor.get_module_names()
+            if all_modules and len(all_modules) > 0:
+                module_names = all_modules[0]
+            else:
+                raise ValueError("No modules found in the model")
 
+        print(f"Registering hooks on {len(module_names)} modules...")
+        if hook_expert_score:
+            self.handles = self.monitor.register_moe_hooks(module_names, moe_gate_name)
+        else:
+            self.handles = self.monitor.register_latency_hooks(module_names)
+        
+    def get_worker_store_rank(self):
+        return self.monitor.get_worker_store_rank()
+    
+    def change_json_prefix(self, json_prefix:str):
+        """Edit the json_prefix"""
+        self.json_prefix=json_prefix
+        
+    def get_intermediate_results(self) -> dict[str, Any]:
+        """Get intermediate results without clearing the stored data."""
+        # Collect results without popping
+        if self.hook_expert_score:
+            result_dict = self.monitor.aggregate_async_moe_results(pop=False)
+        else:
+            result_dict = self.monitor.aggregate_async_latencies(pop=False)
+        # Process results
+        if result_dict and len(result_dict) > 0:
+            return result_dict[0]
+        else:
+            return {}
+
+    def aggregate_results(
+        self, 
+        dummy_dp_rank: list[int]=[],
+        print_results: bool = True, 
+        pop: bool = False
+    ) -> dict[str, Any]:
+        # Collect results
+        print("Aggregating results...")
+        if self.hook_expert_score:
+            result_list = self.monitor.aggregate_async_moe_results(pop=pop)
+        else:
+            result_list = self.monitor.aggregate_async_latencies(pop=pop)
+            
+        # Process results
+        if result_list and len(result_list) > 0:
+            rank_results = result_list[0]
+
+            if print_results:
+                print_latency_results(rank_results)
+
+            if self.save_json:
+                if self.dp_rank is not None and self.dp_size is not None:
+                    if self.dp_rank in dummy_dp_rank:
+                        return result_list
+                    save_results_per_DP_rank_to_json(
+                        result_list, f"{self.json_prefix}-DP{self.dp_rank}_{self.dp_size}.json", format="grouped"
+                    )
+                else:
+                    save_all_gpus_results_to_json(
+                        result_list, f"{self.json_prefix}.json", format="grouped"
+                    )
+            return result_list
+        else:
+            print("No results collected")
+            return {}
+
+"""
+HELPER METHOD
+"""
 def print_latency_results(rank_results: dict[str, Any]):
     """Print latency results in a formatted way."""
     print("\n=== Module Latencies and Input Shapes (Paired) ===")
@@ -511,6 +609,76 @@ def save_all_gpus_results_to_json(
     print(f"\nResults saved to {filename} (format: {format})")
     return all_gpus_results
 
+def save_results_per_DP_rank_to_json(
+    results: list[dict[str, Any]],
+    filename: str = "latency_results.json",
+    format: str = "grouped",
+):
+    """
+    Save the latency and input shape results to a JSON file.
+    Every DP rank separately saves its results. So, its filename is different for each DP rank.
+
+    Args:
+        results: The results dictionary from monitor.aggregate_async_latencies()
+        filename: Output filename for the JSON file
+        format: "flat" for a list of entries, or "grouped" for grouping by module
+    """
+    if format == "flat":
+        all_gpus_results=[]
+        for tp_rank_results in results:
+            json_results = []
+
+            for module_name, data in tp_rank_results.items():
+                if isinstance(data, dict) and "paired_results" in data:
+                    for i, pair in enumerate(data["paired_results"]):
+                        result_entry = {
+                            "module_name": module_name,
+                            "pass_number": i + 1,
+                            "latency_ms": pair["latency_ms"],
+                            "input_shapes": pair["input_shapes"]
+                            if pair["input_shapes"]
+                            else {},
+                            "metadata": pair.get("metadata", {}),
+                        }
+                        if "expert_scores" in pair.keys():
+                            # TODO deserialize해야 한다.
+                            result_entry["expert_scores"] = pair["expert_scores"]
+                        json_results.append(result_entry)
+            all_gpus_results.append(json_results)
+
+    elif format == "grouped":
+        all_gpus_results = {}
+        for tp_rank, tp_rank_results in enumerate(results):
+            json_results = {}
+
+            for module_name, data in tp_rank_results.items():
+                if isinstance(data, dict) and "paired_results" in data:
+                    module_results = []
+                    for i, pair in enumerate(data["paired_results"]):
+                        result_entry = {
+                            "pass_number": i + 1,
+                            "latency_ms": pair["latency_ms"],
+                            "input_shapes": pair["input_shapes"]
+                            if pair["input_shapes"]
+                            else {},
+                            "metadata": pair.get("metadata", {}),
+                        }
+                        if "expert_scores" in pair.keys():
+                            result_entry["expert_scores"] = pair["expert_scores"]
+                        module_results.append(result_entry)
+                    json_results[module_name] = module_results
+            all_gpus_results[f"TP_{tp_rank}"] = json_results
+
+    else:
+        raise ValueError(f"Unknown format: {format}. Use 'flat' or 'grouped'")
+
+    # Save to JSON file with custom encoder
+    # TODO: save filename should be different for each DP rank.
+    with open(filename, "w") as f:
+        json.dump(all_gpus_results, f, indent=2, cls=NumpyEncoder)
+
+    print(f"\nResults saved to {filename} (format: {format})")
+    return all_gpus_results
 
 def filter_modules_by_pattern(module_names: list[str], pattern: str) -> list[str]:
     """Filter module names by a pattern."""
