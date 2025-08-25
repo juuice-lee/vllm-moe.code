@@ -293,12 +293,6 @@ class EngineCore:
             scheduler_output)
         engine_core_outputs = self.scheduler.update_from_output(
             scheduler_output, model_output)  # type: ignore
-        logger.debug(
-            [f"{req_id}: {scheduled_tokens}, " for req_id, scheduled_tokens in scheduler_output.num_scheduled_tokens.items()]
-        )
-        logger.debug(
-            f"{'='*10} Step Completed {'='*10}"
-        )
 
         return (engine_core_outputs,
                 scheduler_output.total_num_scheduled_tokens > 0)

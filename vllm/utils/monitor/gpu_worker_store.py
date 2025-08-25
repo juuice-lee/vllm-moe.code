@@ -14,6 +14,7 @@ from vllm.distributed.kv_transfer import ensure_kv_transfer_initialized
 from vllm.platforms import current_platform
 import types
 import torch.nn as nn
+from transformers import PreTrainedTokenizerBase
 
 class RPCCallFunction:
     def __init__(self, **kwargs):
@@ -51,6 +52,7 @@ class RPCCallFunction:
     def register_latency_hooks(
         self,
         module_names: list[str],
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
     ) -> dict[str, tuple[RemovableHandle, RemovableHandle]]:
         """
         여러 모듈에 GPU-forward latency(ms)를 비동기 방식으로 수집하는
@@ -135,6 +137,9 @@ class RPCCallFunction:
             end_evt = torch.cuda.Event(enable_timing=True)
             end_evt.record()
             store.record_hook_data(_name, "_evt_pairs", end_evt)
+            out_logits = _m.compute_logits(_out[-1], None).argmax(dim=-1)
+            decoded_text = tokenizer.decode(out_logits, skip_special_tokens=False)
+            logger.info(f"Model Output: {decoded_text}")
         # model도 pre-hook, post-hook 등록해서 전체 chat time 측정
         # print(f"model hooking")
         model.register_forward_pre_hook(_model_pre_hook)

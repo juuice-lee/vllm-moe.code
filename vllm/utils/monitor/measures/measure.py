@@ -12,6 +12,7 @@ from vllm import LLM, SamplingParams
 from vllm.entrypoints.chat_utils import ChatCompletionMessageParam
 
 from vllm.utils.monitor.llm_monitor import LLMMonitor
+from transformers import PreTrainedTokenizerBase
 
 class LatencyMeasure:
     def __init__(
@@ -324,6 +325,7 @@ class SLOMeasure:
         moe_gate_name: str = "gate",
         dp_rank: Optional[int] = None,
         dp_size: Optional[int] = None,
+        tokenizer: Optional[PreTrainedTokenizerBase]=None,
     ):
         assert (dp_rank is None and dp_size is None) or (dp_rank is not None and dp_size is not None), \
             "If you use DP, you should set both dp_rank and dp_size. If not, set both to None."
@@ -348,9 +350,9 @@ class SLOMeasure:
 
         print(f"Registering hooks on {len(module_names)} modules...")
         if hook_expert_score:
-            self.handles = self.monitor.register_moe_hooks(module_names, moe_gate_name)
+            self.monitor.register_moe_hooks(module_names, moe_gate_name)
         else:
-            self.handles = self.monitor.register_latency_hooks(module_names)
+            self.monitor.register_latency_hooks(module_names, tokenizer)
         
     def get_worker_store_rank(self):
         return self.monitor.get_worker_store_rank()

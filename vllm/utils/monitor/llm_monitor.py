@@ -15,7 +15,7 @@ from torch.utils.hooks import RemovableHandle
 
 from vllm import LLM
 from vllm.utils.monitor.worker_store import WorkerStore
-
+from transformers import PreTrainedTokenizerBase
 
 class LLMMonitor:
     """
@@ -72,10 +72,10 @@ class LLMMonitor:
         return self.collective_rpc("get_worker_store_dict")
 
     def register_latency_hooks(
-        self, module_names: list[str]
+        self, module_names: list[str], tokenizer: Optional[PreTrainedTokenizerBase]=None,
     ) -> dict[str, tuple[RemovableHandle, RemovableHandle]]:
         """Register latency hooks on the specified modules."""
-        return self.collective_rpc("register_latency_hooks", module_names)
+        return self.collective_rpc("register_latency_hooks", module_names, tokenizer)
     
     def register_moe_hooks(
         self, module_names: list[str], moe_gate_name: str="gate"
