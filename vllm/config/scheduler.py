@@ -30,6 +30,8 @@ SchedulerPolicy = Literal["fcfs", "priority"]
 @dataclass
 class SchedulerConfig:
     """Scheduler configuration."""
+    profile_step: bool = False
+    """CASYS(jh_lee) If True, profile scheduled req per step."""
 
     runner_type: RunnerType = "generate"
     """The runner type to launch for the model."""

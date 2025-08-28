@@ -353,6 +353,10 @@ class Worker(RPCCallFunction, WorkerBase):
         self,
         scheduler_output: "SchedulerOutput",
     ) -> Optional[ModelRunnerOutput]:
+        # CASYS(jh_lee): record scheduled request
+        if self.profile_step:
+            self.profile_steps.append(scheduler_output)
+        
         intermediate_tensors = None
         if not get_pp_group().is_first_rank:
             intermediate_tensors = IntermediateTensors(

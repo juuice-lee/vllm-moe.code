@@ -457,6 +457,9 @@ class EngineArgs:
 
     kv_sharing_fast_prefill: bool = \
         CacheConfig.kv_sharing_fast_prefill
+        
+    # CASYS(jh_lee): profile_step
+    profile_step: bool = SchedulerConfig.profile_step
 
     def __post_init__(self):
         # support `EngineArgs(compilation_config={...})`
@@ -872,7 +875,9 @@ class EngineArgs:
             **scheduler_kwargs["disable_hybrid_kv_cache_manager"])
         scheduler_group.add_argument("--async-scheduling",
                                      **scheduler_kwargs["async_scheduling"])
-
+        # CASYS(jh_lee)
+        scheduler_group.add_argument("--profile-step", 
+                                     **scheduler_kwargs["profile_step"])
         # vLLM arguments
         vllm_kwargs = get_kwargs(VllmConfig)
         vllm_group = parser.add_argument_group(
@@ -1339,6 +1344,7 @@ class EngineArgs:
             disable_hybrid_kv_cache_manager=self.
             disable_hybrid_kv_cache_manager,
             async_scheduling=self.async_scheduling,
+            profile_step=self.profile_step,
         )
 
         if not model_config.is_multimodal_model and self.default_mm_loras:

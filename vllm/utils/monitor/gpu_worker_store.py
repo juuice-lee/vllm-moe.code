@@ -15,6 +15,7 @@ from vllm.platforms import current_platform
 import types
 import torch.nn as nn
 from transformers import PreTrainedTokenizerBase
+from vllm.v1.core.sched.output import SchedulerOutput
 
 class RPCCallFunction:
     def __init__(self, **kwargs):
@@ -22,8 +23,11 @@ class RPCCallFunction:
         
         local_rank = kwargs.get("local_rank")
         rank = kwargs.get("rank")
+        vllm_config = kwargs.get("vllm_config", False)
         self._worker_store = WorkerStore()
         self._worker_store.set_device_info(device_id=local_rank, worker_id=rank)
+        self.profile_step = vllm_config.scheduler_config.profile_step if vllm_config else False
+        self.profile_steps = []
     
     def check_method_exists(self, method: str) -> bool:
         """Check if a method exists in the worker."""
@@ -32,6 +36,10 @@ class RPCCallFunction:
     def get_worker_store_rank(self) -> tuple[Optional[int], Optional[int]]:
         """Check the rank and local rank of the worker."""
         return self._worker_store.device_id, self._worker_store.worker_id
+    
+    def get_scheduled_outputs(self) -> list[SchedulerOutput]:
+        torch.cuda.synchronize()
+        return self.profile_steps
 
     # Call like llm.llm_engine.collective_rpc("get_module_names")
     def get_module_names(self) -> list[str]:
@@ -138,8 +146,7 @@ class RPCCallFunction:
             end_evt.record()
             store.record_hook_data(_name, "_evt_pairs", end_evt)
             out_logits = _m.compute_logits(_out[-1], None).argmax(dim=-1)
-            decoded_text = tokenizer.decode(out_logits, skip_special_tokens=False)
-            logger.info(f"Model Output: {decoded_text}")
+            # decoded_text = tokenizer.decode(out_logits, skip_special_tokens=False)
         # model도 pre-hook, post-hook 등록해서 전체 chat time 측정
         # print(f"model hooking")
         model.register_forward_pre_hook(_model_pre_hook)

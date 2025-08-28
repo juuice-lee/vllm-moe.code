@@ -216,6 +216,8 @@ class LLM:
                 # to provide better context to the user.
                 raise ValueError(
                     f"Invalid 'kv_transfer_config' provided: {e}") from e
+        if "profile_step" not in kwargs:
+            kwargs["profile_step"] = False
 
         if hf_overrides is None:
             hf_overrides = {}

@@ -2240,8 +2240,6 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         assert cudagraph_runtime_mode in {
             CUDAGraphMode.NONE, CUDAGraphMode.PIECEWISE, CUDAGraphMode.FULL
         }
-        logger.info("[gpu_model_runner.py] Dummy run.")
-
         # Padding for DP
         num_pad, num_tokens_across_dp = self.get_dp_padding(num_tokens)
         num_tokens += num_pad

@@ -57,7 +57,6 @@ HANDSHAKE_TIMEOUT_MINS = 5
 
 _R = TypeVar('_R')  # Return type for collective_rpc
 
-
 class EngineCore:
     """Inner loop of vLLM's Engine."""
 
@@ -66,7 +65,8 @@ class EngineCore:
                  executor_class: type[Executor],
                  log_stats: bool,
                  executor_fail_callback: Optional[Callable] = None):
-
+        # CASYS(jh_lee): profiler_step
+        super().__init__()
         # plugins need to be loaded at the engine/scheduler level too
         from vllm.plugins import load_general_plugins
         load_general_plugins()
@@ -97,11 +97,16 @@ class EngineCore:
         self.structured_output_manager = StructuredOutputManager(vllm_config)
 
         # Setup scheduler.
-        if isinstance(vllm_config.scheduler_config.scheduler_cls, str):
-            Scheduler = resolve_obj_by_qualname(
-                vllm_config.scheduler_config.scheduler_cls)
+        # CASYS(jh_lee): record scheduled request if profile_step is True
+        if vllm_config.scheduler_config.profile_step:
+            from vllm.utils.scheduler.profile import SchedulerProfiler
+            Scheduler = SchedulerProfiler
         else:
-            Scheduler = vllm_config.scheduler_config.scheduler_cls
+            if isinstance(vllm_config.scheduler_config.scheduler_cls, str):
+                Scheduler = resolve_obj_by_qualname(
+                    vllm_config.scheduler_config.scheduler_cls)
+            else:
+                Scheduler = vllm_config.scheduler_config.scheduler_cls
 
         # This warning can be removed once the V1 Scheduler interface is
         # finalized and we can maintain support for scheduler classes that

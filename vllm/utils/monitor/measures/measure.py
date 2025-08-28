@@ -13,6 +13,7 @@ from vllm.entrypoints.chat_utils import ChatCompletionMessageParam
 
 from vllm.utils.monitor.llm_monitor import LLMMonitor
 from transformers import PreTrainedTokenizerBase
+from vllm.v1.core.sched.output import SchedulerOutput
 
 class LatencyMeasure:
     def __init__(
@@ -373,7 +374,10 @@ class SLOMeasure:
             return result_dict[0]
         else:
             return {}
-
+    def get_scheduled_outputs(self) -> list[list[SchedulerOutput]]:
+        """Get the scheduled outputs from all workers."""
+        return self.monitor.get_scheduled_outputs()
+    
     def aggregate_results(
         self, 
         dummy_dp_rank: list[int]=[],

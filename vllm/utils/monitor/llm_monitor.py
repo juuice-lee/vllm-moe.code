@@ -16,6 +16,7 @@ from torch.utils.hooks import RemovableHandle
 from vllm import LLM
 from vllm.utils.monitor.worker_store import WorkerStore
 from transformers import PreTrainedTokenizerBase
+from vllm.v1.core.sched.output import SchedulerOutput
 
 class LLMMonitor:
     """
@@ -58,7 +59,11 @@ class LLMMonitor:
         return self.llm.llm_engine.collective_rpc(
             method, args=args, kwargs=kwargs
         )
-
+    
+    def get_scheduled_outputs(self) -> list[list[SchedulerOutput]]:
+        """Get the scheduled outputs from all workers."""
+        return self.collective_rpc("get_scheduled_outputs")
+    
     def get_module_names(self) -> list[str]:
         """Get the names of all modules in the model."""
         return self.collective_rpc("get_module_names")
